@@ -1,0 +1,377 @@
+<%- include("partials/header"); -%>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 20px;
+    }
+
+    img {
+        max-width: 100%;
+        display: block;
+        margin: 0 auto;
+        margin-top: 20px;
+    }
+
+    #cameraFeed {
+        display: block;
+        margin: 0 auto;
+    }
+
+    
+    #myModal {
+        display: none;
+        position: fixed;
+        z-index: 1;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgb(0, 0, 0);
+        background-color: rgba(0, 0, 0, 0.9);
+        padding-top: 20px;
+    }
+
+    #modalContent {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .modalImg {
+        margin: 10px;
+        border: 1px solid #ddd;
+        max-height: 150px;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+    .modalImg:hover {
+        border: 1px solid #777;
+    }
+
+    .modalImgModal {
+        max-width: 100%;
+        max-height: 100%;
+        margin: auto;
+        display: block;
+    }
+
+    .close {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        color: #fff;
+        font-size: 30px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+</style>
+
+<h1>Twoje zdjęcie</h1>
+<p id="changeContent"> </p>
+
+<video id="cameraFeed" autoplay></video>
+<img id="capturedPhoto">
+
+<button id="captureButton">Zrób zdjęcie</button>
+<button id="resetButton" style="display: none;">Zrób nowe zdjęcie</button>
+<button id="downloadButton" style="display: none;">Pobierz zdjęcie</button>
+<button id="bwButton" style="display: none;">Zmień na czarno-białe</button>
+<button id="colorButton" style="display: none;">Zmień na kolorowe</button>
+<button id="myPhotosButton">Moje zdjęcia</button>
+
+
+<div id="myModal">
+    <div id="modalContent"></div>
+    <span class="close" onclick="closeModal()">&times;</span>
+</div>
+
+<div id="recordingsList">
+    <ul id="recordings"></ul>
+</div>
+
+<script>
+    const recordingsList = document.getElementById('recordings');
+    const cameraFeed = document.getElementById('cameraFeed');
+    const capturedPhoto = document.getElementById('capturedPhoto');
+    const captureButton = document.getElementById('captureButton');
+    const resetButton = document.getElementById('resetButton');
+    const downloadButton = document.getElementById('downloadButton');
+    const bwButton = document.getElementById('bwButton');
+    const colorButton = document.getElementById('colorButton');
+    const myPhotosButton = document.getElementById('myPhotosButton');
+    const modal = document.getElementById('myModal');
+    const modalContent = document.getElementById('modalContent');
+    const changeContent = document.getElementById('changeContent');
+
+    let stream;
+    let myPhotos = [];
+
+    
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then((mediaStream) => {
+            stream = mediaStream;
+            cameraFeed.srcObject = mediaStream;
+        })
+        .catch((error) => {
+            console.error('Błąd przy uzyskiwaniu dostępu do kamery:', error);
+        });
+
+   
+    function capturePhoto() {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+
+        canvas.width = cameraFeed.videoWidth;
+        canvas.height = cameraFeed.videoHeight;
+
+        context.drawImage(cameraFeed, 0, 0, canvas.width, canvas.height);
+
+        const photoURL = canvas.toDataURL('image/png');
+
+        const isBlackAndWhite = false;
+        myPhotos.push({ url: photoURL, isBlackAndWhite: isBlackAndWhite });
+
+        displayPhoto(photoURL);
+        resetButton.style.display = 'inline';
+        downloadButton.style.display = 'inline';
+        bwButton.style.display = 'inline';
+        colorButton.style.display = 'inline'; 
+        captureButton.style.display = 'none';
+    }
+
+    function applyBlackAndWhite() {
+        
+        if (capturedPhoto.src) {
+            capturedPhoto.style.filter = 'grayscale(100%)';
+            bwButton.style.display = 'none';
+            downloadButton.style.display = 'inline';
+            colorButton.style.display = 'inline'; 
+
+            const lastPhotoIndex = myPhotos.length - 1;
+            myPhotos[lastPhotoIndex].isBlackAndWhite = true;
+        }
+    }
+
+    function applyColor() {
+       
+        capturedPhoto.style.filter = 'none';
+        colorButton.style.display = 'none'; 
+        bwButton.style.display = 'inline'; 
+        downloadButton.style.display = 'inline'; 
+
+        const lastPhotoIndex = myPhotos.length - 1;
+        myPhotos[lastPhotoIndex].isBlackAndWhite = false;
+    }
+
+    function resetCapture() {
+        
+        capturedPhoto.style.filter = 'none';
+
+        
+        capturedPhoto.style.display = 'none';
+        cameraFeed.style.display = 'block';
+        changeContent.textContent = '';
+        resetButton.style.display = 'none';
+        downloadButton.style.display = 'none';
+        bwButton.style.display = 'none';
+        colorButton.style.display = 'none'; 
+        captureButton.style.display = 'inline';
+    }
+
+   
+    function displayPhoto(url) {
+    
+        cameraFeed.style.display = 'none';
+        capturedPhoto.src = url;
+        capturedPhoto.style.display = 'block';
+
+        changeContent.textContent = 'Zdjęcie zrobione!';
+    }
+
+   
+    
+    
+    function downloadPhoto() {
+        const fileName = window.prompt('Podaj nazwę pliku (bez rozszerzenia):', 'zdjecie');
+        if (fileName !== null) {
+            let url = capturedPhoto.src;
+
+           
+            if (capturedPhoto.style.filter === 'grayscale(100%)') {
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+
+                canvas.width = capturedPhoto.width;
+                canvas.height = capturedPhoto.height;
+
+                context.filter = 'grayscale(100%)';
+                context.drawImage(capturedPhoto, 0, 0, canvas.width, canvas.height);
+
+                url = canvas.toDataURL('image/png');
+            }
+
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${fileName}.png`;
+            anchor.click();
+        }
+    }
+
+    
+    function displayMyPhotos() {
+        
+        modalContent.innerHTML = '';
+
+      
+        myPhotos.forEach((photo, index) => {
+            const imgThumbnail = document.createElement('img');
+            imgThumbnail.src = photo.url;
+            imgThumbnail.alt = `Thumbnail ${index + 1}`;
+            imgThumbnail.classList.add('modalImg');
+            imgThumbnail.onclick = () => openModal(photo.url, photo.isBlackAndWhite);
+
+            
+            const downloadButton = document.createElement('button');
+            downloadButton.textContent = 'Pobierz';
+            downloadButton.onclick = (event) => downloadPhotoFromThumbnail(event, photo.url);
+
+            const container = document.createElement('div');
+            container.appendChild(imgThumbnail);
+            container.appendChild(downloadButton);
+
+            modalContent.appendChild(container);
+        });
+
+        
+        modal.style.display = 'block';
+    }
+
+    
+function openModal(photoUrl, isBlackAndWhite) {
+    const modalImg = document.createElement('img');
+    modalImg.src = photoUrl;
+    modalImg.alt = 'Selected Photo';
+    modalImg.classList.add('modalImgModal');
+
+    const closeModalButton = document.createElement('span');
+    closeModalButton.innerHTML = '&times;';
+    closeModalButton.classList.add('close');
+    closeModalButton.onclick = closeModal;
+
+    const buttonContainer = document.createElement('div');
+    buttonContainer.classList.add('buttonContainer');
+
+    const downloadButton = document.createElement('button');
+    downloadButton.textContent = 'Pobierz';
+    downloadButton.onclick = (event) => downloadPhotoFromModal(event, photoUrl);
+    buttonContainer.appendChild(downloadButton);
+
+    const bwButton = document.createElement('button');
+    bwButton.textContent = 'Zmień na czarno-białe';
+    bwButton.onclick = () => applyBlackAndWhiteModal(modalImg, photoUrl, downloadButton, bwButton);
+    buttonContainer.appendChild(bwButton);
+
+    modalContent.innerHTML = '';
+    modalContent.appendChild(modalImg);
+    modalContent.appendChild(buttonContainer);
+    modalContent.appendChild(closeModalButton);
+
+    modalImg.style.display = 'block';
+    modalImg.style.margin = '0 auto';
+
+    modal.style.display = 'block';
+
+    
+
+   
+    modalImg.onclick = closeModal;
+}
+
+function applyBlackAndWhiteModal(modalImg, originalPhotoUrl, downloadButton, bwButton) {
+    modalImg.style.filter = 'grayscale(100%)';
+
+    bwButton.style.display = 'none';
+
+   
+    downloadButton.textContent = 'Pobierz czarno-białe';
+    downloadButton.onclick = () => downloadBlackAndWhitePhoto(originalPhotoUrl);
+}
+
+
+function downloadBlackAndWhitePhoto(photoUrl) {
+    const fileName = window.prompt('Podaj nazwę pliku (bez rozszerzenia):', 'zdjecie_bw');
+    if (fileName !== null) {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+
+        const img = new Image();
+        img.onload = function() {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            context.filter = 'grayscale(100%)';
+            context.drawImage(img, 0, 0);
+            
+            const url = canvas.toDataURL('image/png');
+
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${fileName}.png`;
+            anchor.click();
+        };
+        img.src = photoUrl;
+    }
+}
+
+    
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+
+  
+    function downloadPhotoFromThumbnail(event, photoUrl) {
+        event.stopPropagation();
+    
+        const fileName = window.prompt('Podaj nazwę pliku (bez rozszerzenia):', 'zdjecie');
+        if (fileName !== null) {
+            const anchor = document.createElement('a');
+            anchor.href = photoUrl;
+            anchor.download = `${fileName}.png`;
+            anchor.click();
+        }
+    }
+    
+    function downloadPhotoFromModal(event, photoUrl) {
+        event.stopPropagation();
+    
+        const fileName = window.prompt('Podaj nazwę pliku (bez rozszerzenia):', 'zdjecie');
+        if (fileName !== null) {
+            const anchor = document.createElement('a');
+            anchor.href = photoUrl;
+            anchor.download = `${fileName}.png`;
+            anchor.click();
+        }
+    }
+
+    
+    captureButton.addEventListener('click', capturePhoto);
+
+ 
+    resetButton.addEventListener('click', resetCapture);
+
+   
+    downloadButton.addEventListener('click', downloadPhoto);
+
+    
+    bwButton.addEventListener('click', applyBlackAndWhite);
+
+    
+    colorButton.addEventListener('click', applyColor);
+
+   
+    myPhotosButton.addEventListener('click', displayMyPhotos);
+</script>
+
+<%- include("partials/footer"); -%>

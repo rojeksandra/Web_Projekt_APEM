@@ -1,0 +1,266 @@
+<%- include("partials/header"); -%>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 20px;
+    }
+    
+    #waveform {
+        width: 80%;
+        margin: 20px auto;
+    }
+    
+    .recordings {
+        margin-top: 20px;
+    }
+
+    .recordings ul {
+        list-style: none;
+        padding: 0;
+    }
+
+    .recordings li {
+        margin: 10px;
+        display: flex;
+        align-items: center;
+    }
+
+    .recordings li audio {
+        margin-right: 10px;
+    }
+</style>
+
+<h1>Nagraj</h1>
+<p> <%= recordContent %> </p>
+
+<button id="startRecording">Rozpocznij nagrywanie</button>
+<button id="stopRecording" disabled>Zakończ nagrywanie</button>
+<button id="playRecording" disabled>Odtwórz nagranie</button>
+
+<label for="conversionFormat">Format:</label>
+<select id="conversionFormat">
+    <option value="wav">WAV</option>
+    <option value="ogg">OGG</option>
+    <option value="mp3">MP3</option>
+</select>
+
+<label for="speedInput">Przyspieszenie/Zwolnienie:</label>
+<input type="text" id="speedInput" placeholder="Wprowadź wartość...">
+<button id="applySpeed">Zastosuj</button>
+
+<button id="downloadRecording" disabled>Pobierz nagranie</button>
+
+<audio controls id="audioPlayer" style="display: none;"></audio>
+
+<div id="recordingInfo" style="display: none;">
+    <p>Trwa nagrywanie...</p>
+    <p id="recordingTime">Czas nagrywania: 0 sekund</p>
+</div>
+
+<div id="waveform"></div>
+
+<div class="recordings">
+    <h2>Moje nagrania</h2>
+    <ul id="savedRecordingsList"></ul>
+</div>
+
+<button id="mySounds">Moje dźwięki</button>
+
+<script src="https://unpkg.com/wavesurfer.js"></script>
+
+<script>
+    const startRecordingButton = document.getElementById('startRecording');
+    const stopRecordingButton = document.getElementById('stopRecording');
+    const playRecordingButton = document.getElementById('playRecording');
+    const downloadRecordingButton = document.getElementById('downloadRecording');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const recordingInfo = document.getElementById('recordingInfo');
+    const recordingTimeDisplay = document.getElementById('recordingTime');
+    const conversionFormatSelect = document.getElementById('conversionFormat');
+    const speedInput = document.getElementById('speedInput');
+    const applySpeedButton = document.getElementById('applySpeed');
+    const savedRecordingsList = document.getElementById('savedRecordingsList');
+    const mySoundsButton = document.getElementById('mySounds');
+    const waveformContainer = document.getElementById('waveform');
+
+    let recorder;
+    let startTime;
+    let currentRecordingBlob;
+    let audioPlaybackRate = 1;
+    let wavesurfer;
+
+    startRecordingButton.addEventListener('click', startRecording);
+    stopRecordingButton.addEventListener('click', stopRecording);
+    playRecordingButton.addEventListener('click', playRecording);
+    downloadRecordingButton.addEventListener('click', downloadRecording);
+    applySpeedButton.addEventListener('click', applySpeed);
+    mySoundsButton.addEventListener('click', showMySounds);
+
+    audioPlayer.addEventListener('ended', () => {
+        audioPlayer.style.display = 'none';
+        recordingInfo.style.display = 'none';
+    });
+
+    window.addEventListener('beforeunload', () => {
+        localStorage.removeItem('savedRecordings');
+    });
+
+    function startRecording() {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                recorder = new MediaRecorder(stream);
+                const chunks = [];
+
+                recorder.ondataavailable = event => {
+                    if (event.data.size > 0) {
+                        chunks.push(event.data);
+                    }
+                };
+
+                recorder.onstop = () => {
+                    currentRecordingBlob = new Blob(chunks, { type: 'audio/wav' });
+
+                    recordingInfo.style.display = 'none';
+                    playRecordingButton.disabled = false;
+                    downloadRecordingButton.disabled = false;
+                    displayWaveform(currentRecordingBlob);
+                    saveRecording(currentRecordingBlob);
+                };
+
+                recorder.onstart = () => {
+                    startTime = Date.now();
+                    recordingInfo.style.display = 'block';
+                    updateRecordingTime();
+                };
+
+                recorder.start();
+                startRecordingButton.disabled = true;
+                stopRecordingButton.disabled = false;
+                recordingInfo.style.display = 'block';
+                updateRecordingTime();
+            })
+            .catch(error => {
+                console.error('Błąd przy uzyskiwaniu dostępu do mikrofonu:', error);
+            });
+    }
+
+    function stopRecording() {
+        recorder.stop();
+        startRecordingButton.disabled = false;
+        stopRecordingButton.disabled = true;
+    }
+
+    function playRecording() {
+        if (currentRecordingBlob) {
+            const audioUrl = URL.createObjectURL(currentRecordingBlob);
+            audioPlayer.src = audioUrl;
+            audioPlayer.style.display = 'block';
+            audioPlayer.playbackRate = audioPlaybackRate;
+            audioPlayer.play();
+        }
+    }
+
+    function downloadRecording() {
+        if (currentRecordingBlob) {
+            const modifiedBlob = new Blob([currentRecordingBlob], { type: 'audio/wav' });
+            const blobUrl = URL.createObjectURL(modifiedBlob);
+            const conversionFormat = conversionFormatSelect.value;
+    
+            const fileName = prompt('Podaj nazwę pliku (bez rozszerzenia):', 'recording') || 'recording';
+    
+            const recordingInfo = {
+                name: fileName,
+                url: blobUrl,
+                format: conversionFormat,
+                playbackRate: audioPlaybackRate,
+            };
+    
+            localStorage.setItem('currentRecording', JSON.stringify(recordingInfo));
+    
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = `${fileName}.${conversionFormat}`;
+            a.click();
+        }
+    }
+
+    function updateRecordingTime() {
+        const currentTime = Math.floor((Date.now() - startTime) / 1000);
+        recordingTimeDisplay.textContent = `Czas nagrywania: ${currentTime} sekund`;
+        setTimeout(updateRecordingTime, 1000);
+    }
+
+    function applySpeed() {
+        const enteredSpeed = parseFloat(speedInput.value);
+
+        if (!isNaN(enteredSpeed) && enteredSpeed >= 0.1 && enteredSpeed <= 3) {
+            audioPlaybackRate = enteredSpeed;
+            playRecording();
+        } else {
+            alert('Wprowadź poprawną wartość przyspieszenia/zwolnienia (0.1 - 3).');
+        }
+    }
+
+    function displayWaveform(blob) {
+        if (wavesurfer) {
+            wavesurfer.destroy();
+        }
+
+        wavesurfer = WaveSurfer.create({
+            container: '#waveform',
+            waveColor: 'violet',
+            progressColor: 'purple'
+        });
+
+        wavesurfer.loadBlob(blob);
+    }
+
+    function saveRecording(blob) {
+        const savedRecordings = JSON.parse(localStorage.getItem('savedRecordings')) || [];
+        const fileName = prompt('Podaj nazwę nagrania (bez rozszerzenia):', 'recording') || 'recording';
+        const recordingInfo = {
+            name: fileName,
+            url: URL.createObjectURL(blob),
+            blob: blob,
+            playbackRate: audioPlaybackRate
+        };
+        savedRecordings.push(recordingInfo);
+        localStorage.setItem('savedRecordings', JSON.stringify(savedRecordings));
+    }
+
+    function displaySavedRecordings() {
+        const savedRecordings = JSON.parse(localStorage.getItem('savedRecordings')) || [];
+        savedRecordingsList.innerHTML = '';
+
+        savedRecordings.forEach((recording, index) => {
+            const listItem = document.createElement('li');
+            const audioElement = document.createElement('audio');
+            const nameLabel = document.createElement('span');
+
+            audioElement.controls = true;
+            audioElement.src = recording.url;
+            nameLabel.textContent = recording.name;
+
+            audioElement.addEventListener('click', () => {
+                audioPlayer.src = audioElement.src;
+                audioPlayer.style.display = 'block';
+                audioPlayer.play();
+            });
+
+            listItem.appendChild(audioElement);
+            listItem.appendChild(nameLabel);
+            savedRecordingsList.appendChild(listItem);
+        });
+    }
+
+    function showMySounds() {
+        displaySavedRecordings();
+    }
+
+    window.onload = () => {
+        localStorage.removeItem('savedRecordings');
+    };
+</script>
+
+<%- include("partials/footer"); -%>
